@@ -1,0 +1,98 @@
+use-conda: True
+
+# These resources will be applied to all rules. Can be overridden on a per-rule basis below.
+default-resources:
+  mem_mb: attempt * 8000
+  mem_mb_reduced: attempt * 7000 # Mem allocated to Java for GATK rules.
+  tmpdir: system_tmpdir # Replace with an absolute path to force a custom temp directory for the whole run.
+  # Uncomment and edit following options for slurm execution:
+  slurm_partition: "standard"
+  # slurm_account: # Same as sbatch -A. Not all clusters use this.
+  runtime: 720 # In minutes
+
+  # Control number of threads each rule will use.
+set-threads:
+  # Fastq Processing
+  download_sra: 6
+  fastp: 6
+
+  # Alignment
+  bwa_mem: 16
+  markdup_library: 16
+
+  # GATK Variant Calling
+  gatk_haplotypecaller: 1
+  gatk_haplotypecaller_interval: 1
+  joint_genomics_db_import: 1
+  gatk_genomics_db_import: 1
+
+  # Callable Bed
+  mosdepth: 6
+  clam_collect: 6
+  clam_loci: 6
+
+  # Sentieon Tools
+  sentieon_map: 16
+  sentieon_dedup_library: 16
+  sentieon_haplotyper: 32
+  sentieon_combine_gvcf: 32
+
+  # Additional Variant Callers
+  bcftools_call: 8
+  deepvariant_call: 8
+  glnexus_joint: 4
+  parabricks_haplotypecaller: 16
+
+# Control/overwrite resources per rule.
+# mem_mb controls the scheduler request. mem_mb_reduced controls tool memory
+# budgets below the scheduler limit and should be an integer number of MB.
+set-resources:
+  # Alignment
+  bwa_mem:
+    mem_mb: attempt * 16000
+    runtime: 2880
+  markdup_library:
+    mem_mb: attempt * 8000
+
+  # Interval generation
+  picard_intervals:
+    mem_mb: attempt * 8000
+    mem_mb_reduced: attempt * 7200
+  create_gvcf_intervals:
+    mem_mb: attempt * 8000
+    mem_mb_reduced: attempt * 7200
+  create_db_intervals:
+    mem_mb: attempt * 8000
+    mem_mb_reduced: attempt * 7200
+
+  # GATK Variant Calling
+  gatk_haplotypecaller_interval:
+    mem_mb: attempt * 16000
+    mem_mb_reduced: attempt * 14400
+  gatk_genomics_db_import:
+    mem_mb: attempt * 30000
+    mem_mb_reduced: attempt * 24000
+  gatk_genotype_gvcfs:
+    mem_mb: attempt * 8000
+    mem_mb_reduced: attempt * 7200
+  joint_genomics_db_import:
+    mem_mb: attempt * 62000
+    mem_mb_reduced: attempt * 48000
+    runtime: 1440
+    slurm_partition: "medmem"
+  joint_genotype_gvcfs:
+    mem_mb: attempt * 16000
+    mem_mb_reduced: attempt * 14400
+
+  # DeepVariant joint calling
+  glnexus_joint:
+    mem_mb: attempt * 32000
+    mem_mb_reduced: attempt * 28000
+
+  # Example: Set slurm parameters for a resource-intensive rule.
+  # sentieon_haplotyper:
+  #   mem_mb: attempt * 8000
+  #   mem_mb_reduced: attempt * 7200
+  #   slurm_partition: high-mem
+  #   runtime: 1440
+  #   cpus_per_task: 32
