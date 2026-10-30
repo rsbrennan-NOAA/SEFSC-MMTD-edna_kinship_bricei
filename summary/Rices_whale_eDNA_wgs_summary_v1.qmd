@@ -1,0 +1,181 @@
+---
+title: "Rice's whale eDNA WGS"
+subtitle: "Testing Whole genome data from environmental and non-biopsy samples"
+author: "Reid Brennan"
+date: today
+date-format: "YYYY-MM-DD"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    embed-resources: true
+    code-fold: true
+    code-summary: "Show code"
+    code-tools: true
+    df-print: paged
+    fig-width: 8
+    fig-height: 5
+    lightbox: true
+    anchor-sections: true
+    smooth-scroll: true
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: true
+---
+
+
+# Rice's whale eDNA wgs
+
+Goal: can we use non-biopsy samples to obtain whole genome data from Rice's whales? 
+Samples being tested:
+- Tube juice
+- fluke prints
+- Bones
+
+The hope is that we can obtain 
+
+1. Mitochondrial genomes for every samples
+2. Low coverage WGS. At a minimum identify duplicate individuals. Ideally with good enough data to use for population genetics. 
+
+
+## Samples and methods
+
+## Mitochondrial genome
+
+add in mapping rates, etc here. 
+
+### mapping to genome + mitogenome
+
+analysis/mito_wholeGenome/mito_read_counts_mito_only.csv
+
+### mapping to mitogenome alone
+
+analysis/mito_only/mito_read_counts_mito_only.csv
+
+## Nuclear genome
+
+### Number of reads and mapping success
+
+```{r}
+#| label: load-data
+
+library(tidyverse)
+
+qc <- read_tsv("../qc_report.tsv") |>
+  rename(genome_cov = `% genome_cov`) |>
+  mutate(
+    pct_genome_cov = genome_cov * 100,
+    sample_type = case_when(
+      sample %in% c("Bric026", "Bric032") ~ "Biopsy",
+      sample %in% c("Bric045", "Bric046") ~ "Bone",
+      str_detect(sample, "^Bric_tag") ~ "Tube juice",
+      str_detect(sample, "^Bric_eDNA") ~ "Fluke print"
+    ),
+    sample_type = factor(
+      sample_type,
+      levels = c("Biopsy", "Bone", "Tube juice", "Fluke print")
+    )
+  )
+```
+
+```{r}
+#| label: tbl-qc
+#| tbl-cap: "Sequencing and mapping summary for each sample."
+
+qc |>
+  arrange(sample_type, desc(percent_mapped)) |>
+  mutate(reads_m = reads_after_filtering / 1e6) |>
+  select(
+    Sample = sample,
+    Type = sample_type,
+    `Reads after filtering (M)` = reads_m,
+    `% mapped` = percent_mapped,
+    `% duplicates` = percent_duplicates,
+    `Mean depth (×)` = mean_depth,
+    `% genome covered` = pct_genome_cov
+  ) |>
+  knitr::kable(digits = c(0, 0, 0, 1, 2, 2, 1))
+```
+
+Note that mean depth is from the entire genome, counting 0's. 
+
+## Nuclear genome
+
+General idea:  
+`Align to reference genome -> pseudohaploidize known SNP sites -> id relatedness/duplicate individuals.` 
+
+The pseudohaploid approach and pairwise mismatch rate (pmr) is what is used in ancient DNA with poor data and other low coverage data so quite similar to our data: 
+- https://onlinelibrary.wiley.com/doi/10.1111/mec.70375
+- https://github.com/hringbauer/cayo_pmr
+
+
+Calculate PMR:
+
+`pseudoHap_filter_merge_replicates.ipynb`
+
+
+### relatedness
+
+`pmr_breadr.R`
+
+I also did it manually in `pseudoHap_filter_merge_replicates.ipynb`, but seems safe to do it with breadr for now. 
+
+![](../figures/pmr_nonmaskedGenome_nonmasked-PH.png)
+
+This is strange. Many of the eDNA samples are identical. Check the actual values when comparing to high coverage samples:
+
+
+```{r}
+#| label: tbl-pmr
+pmr <- read_csv("../pmr_out.csv")
+
+pmr |>
+  slice_head(n = 15) |>
+  knitr::kable(digits = 3)
+```
+
+Many/most seem to be most related to Bric006- this is the reference individual. This suggests there is reference bias. Check this below. 
+
+
+### Reference Bias
+
+`ref_bias.R`
+
+Overall conclusion: Flukeprint samples did not work. Tube juice and bone samples look OK. 
+
+![](../figures/reference_bias_nonmaskedGenome_nonmasked-PH.png)
+
+Clearly biased towards the reference allele. 100%!
+
+Solution: Mask the reference genome at known SNPs, from the RW preprint. Then re-align to this. In theory, this should help. 
+
+![](../figures/reference_bias_maskedGenome_masked-PH.png)
+
+Now they're 50%. This suggests the SNPs are being randomly called and are not real.
+
+
+#### use historical dna approach
+
+haven't done this yet, need to redo it. PopGLen_historical
+
+
+### what are the falsely aligned reads?
+
+need to blast the mapped reads. I bet they hit bacteria or viral or something. 
+
+Could also run kracken or similar to see what the reads are. 
+
+
+
+
+## Successful Samples
+
+### Tube Juice and Bones
+
+Run the pmr analysis with these only to at least see if there are any duplicate individuals. 
+
+

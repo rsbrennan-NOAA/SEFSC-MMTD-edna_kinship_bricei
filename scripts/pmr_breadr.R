@@ -5,7 +5,7 @@ library(BREADR)
 # analyze the haps from the low cov samples
 
 
-low_haps <- read.table("analysis/pseudo_haps/low_cov_pseudohap.haplo",
+low_haps <- read.table("analysis/pseudo_haps/low_cov_maf05_nonmaskedGenome_nonmasked-PH_pseudohap.renamed.haplo",
   header=T)
 
 ind_summary <- low_haps |>
@@ -237,7 +237,12 @@ BREADR::priorSensitivity(
 )
 
 
-##################
+
+
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+
 # are my related individuals the same as the ones in the paper
 
 fullRel <- read.csv("analysis/pseudo_haps/relatednessNewData.csv", header=T)
@@ -270,7 +275,7 @@ merged <- relatedness_highcov |>
 
 #pmin()/pmax() alphabetically sort each row's pair so Bric001-Bric002 and Bric002-Bric001 both become id1 = Bric001, id2 = Bric002, letting the join match regardless of original order.
 
-#Note: this will produce duplicate Indv1/Indv2 columns from both data frames (with _full suffix added to fullRel's version
+#this will produce duplicate Indv1/Indv2 columns from both data frames
 library(ggpubr)
 rab <- ggplot(data=merged, aes(rab, pmr)) +
   geom_point(size=2) +
@@ -290,22 +295,38 @@ R1_R0 <- ggplot(merged, aes(x = R1, y = R0, color = pmr < 0.24)) +
 
 merged <- merged |>
   mutate(group = case_when(
-    pmr < 0.25 & rab > 0.3  ~ "Both",
-    pmr < 0.25 & rab <= 0.3 ~ "pmr < 0.24 only",
-    pmr >= 0.25 & rab > 0.3 ~ "rab > 0.4 only",
+    pmr < 0.24 & rab > 0.3  ~ "rab > 0.3; pmr < 0.24",
+    pmr < 0.2 & rab <= 0.3 ~ "pmr < 0.24 only",
+    pmr >= 0.24 & rab > 0.2 ~ "rab > 0.3 only",
     TRUE                     ~ "Neither"
   ))|>
   arrange(desc(group == "Neither")) 
 
 R1_R0 <- ggplot(merged, aes(x = R1, y = R0, color = group)) +
               geom_point(alpha = 1, size = 2) +
-              scale_color_manual(values = c("Both" = "purple",
+              scale_color_manual(values = c("rab > 0.3; pmr < 0.24" = "purple",
                                              "pmr < 0.24 only" = "orange",
-                                             "rab > 0.4 only" = "blue",
+                                             "rab > 0.3 only" = "blue",
                                              "Neither" = "grey70")) +
   theme_bw()
 R1_R0
 ggarrange(rab,R1_R0)
+
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -321,8 +342,6 @@ ggarrange(rab,R1_R0)
 #highcov_Bric001_subsampled_only
 
 #highcov_Bric001_subsampled_merged
-
-
 
 ind_path <- "analysis/pseudo_haps/highcov_Bric002_subsampled_merged.ind"
 snp_path <- "analysis/pseudo_haps/highcov_Bric002_subsampled_merged.snp"
@@ -454,10 +473,14 @@ hist(comparison$pmr_diff, xlim=c(-0.1, 0.1))
 
 
 
-####### ------------------------
-ind_path <- "analysis/pseudo_haps/all_samples_merged.ind"
-snp_path <- "analysis/pseudo_haps/all_samples_merged.snp"
-geno_path <- "analysis/pseudo_haps/all_samples_merged.geno"
+####### ------------------------------------------------------------------------------
+####### ------------------------------------------------------------------------------
+####### ------------------------------------------------------------------------------
+# analyze all samples
+ind_path <- "analysis/pseudo_haps/all_samples_merged_nonmaskedGenome_nonmasked-PH.ind"
+snp_path <- "analysis/pseudo_haps/all_samples_merged_nonmaskedGenome_nonmasked-PH.snp"
+geno_path <- "analysis/pseudo_haps/all_samples_merged_nonmaskedGenome_nonmasked-PH.geno"
+
 
 counts_highcov <- processEigenstratNoFilter(
   indfile = ind_path,
@@ -468,18 +491,39 @@ counts_highcov <- processEigenstratNoFilter(
 )
 counts_highcov
 
+
 relatedness_all <- callRelatedness(counts_highcov)
 
-
-
-# lists of who's who, straight from your Python sample lists
+# lists of who's who,
 highcov_ids <- c("Bric001","Bric002","Bric003","Bric004","Bric005","Bric007","Bric008",
                   "Bric011","Bric015","Bric016","Bric021","Bric022","Bric023","Bric024",
                   "Bric031","Bric033","Bric034","Bric035","Bric037","Bric039","Bric040",
                   "Bric042","Bric043","Bric044","Bric006","Bric026","Bric032")
-lowcov_ids <- c("Bric045","Bric046","Bric-eDNA03","Bric-eDNA04","Bric-eDNA05","Bric-eDNA06",
-                "Bric-eDNA07","Bric-eDNA08","Bric-eDNA09","Bric-eDNA10","Bric-eDNA11",
-                "Bric-eDNA12","Bric-eDNA13","Bric-tag01","Bric-tag02","Bric-tag03")
+
+id_txt <- read.table("analysis/pseudo_haps/bam_list_nonmaskedGenome_nonmasked-PH.txt")
+
+low_haps <- read.table("analysis/pseudo_haps/low_cov_maf05_nonmaskedGenome_nonmasked-PH_pseudohap.renamed.haplo",
+  header=T)
+
+lowcov_ids_all <- id_txt |>
+  mutate(sample_id = str_extract(basename(V1), "^[^.]+")) |>
+  pull(sample_id)
+
+colnames(low_haps) <- c("chr", "pos", "major", lowcov_ids_all)
+
+ind_summary <- low_haps |>
+  select(starts_with("Bric")) |>
+  summarise(across(everything(), ~ sum(. != "N"))) |>
+  pivot_longer(everything(), names_to = "individual", values_to = "n_called") |>
+  mutate(pct_called = 100 * (n_called / nrow(low_haps)))
+
+ind_summary
+
+
+lowcov_ids <- id_txt |>
+  mutate(sample_id = str_extract(basename(V1), "^[^.]+")) |>
+  filter(!sample_id %in% c("Bric026", "Bric032")) |>
+  pull(sample_id)
 
 relatedness_all <- relatedness_all |>
   separate(pair, into = c("id1", "id2"), sep = " - ", remove = FALSE) |>
@@ -492,10 +536,17 @@ relatedness_all <- relatedness_all |>
 
 table(relatedness_all$comparison_type)
 
-ggplot(relatedness_all, aes(x = pmr, fill = comparison_type)) +
-  geom_histogram(alpha = 0.7, position = "identity", bins = 300) +
-  theme_classic(base_size = 14)
+pal3 <- c("#0047b2", "#E69F00", "#9e0008")
 
+p <- ggplot(relatedness_all, aes(x = pmr, fill = comparison_type, color = comparison_type)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 100, linewidth = 0) +
+  theme_classic(base_size = 14) +
+  scale_fill_manual(values = pal3)
+p
+ggsave(filename="figures/pmr_nonmaskedGenome_nonmasked-PH.png", h=4, w=6, p)
+
+relatedness_all |>
+  arrange(pmr)
 
 relatedness_all_filtered <- relatedness_all |>
   filter(comparison_type != "lowCov vs lowCov")|>
@@ -503,41 +554,39 @@ relatedness_all_filtered <- relatedness_all |>
 
 table(relatedness_all_filtered$comparison_type)
 
-ggplot(relatedness_all_filtered, aes(x = pmr, fill = comparison_type)) +
-  geom_histogram(alpha = 0.7, bins = 300) +
-  theme_classic(base_size = 14)
-
-
-head(relatedness_all_filtered)
-
 out <- relatedness_all_filtered |>
   arrange(pmr)
 
-out[1:20,1:7]
+print(out[1:40,1:7], n=40)
+
+write.csv(file="pmr_out.csv", out[,2:7], row.names=F)
 
 # everything is a twin with 006, which is the reference genome. Reference bias?
+# see ref_bias.R
 
 
-# drop 006
 
-relatedness_all_filtered2 <- relatedness_all_filtered |>
-  filter(!str_detect(pair, "Bric006"))
+# ---------------------------------------------------------------------
+# parse this down to only the tag and bone samples. any matches?
 
-ggplot(relatedness_all_filtered2, aes(x = pmr, fill = comparison_type)) +
-  geom_histogram(alpha = 0.7, bins = 300) +
-  theme_classic(base_size = 14)
-
-out <- relatedness_all_filtered2 |>
+out2 <- relatedness_all |>
+  filter(!str_detect(pair, "eDNA")) |>
   arrange(pmr)
 
-print(out[1:30,1:7], n=30)
+print(out2[1:40,1:7], n=40)
 
 
-ggplot(relatedness_all_filtered3, aes(x = pmr, fill = comparison_type)) +
-  geom_histogram(alpha = 0.7, bins = 300) +
-  theme_classic(base_size = 14)
+out_p <- out2 |>
+  separate(pair, into = c("id1", "id2"), sep = " - ", remove = FALSE) |>
+  mutate(comparison_type = case_when(
+    id1 %in% lowcov_ids & id2 %in% lowcov_ids ~ "lowCov vs lowCov",
+    id1 %in% lowcov_ids | id2 %in% lowcov_ids ~ "lowCov vs highCov",
+    TRUE ~ "highCov only"
+  )) |>
+  select(-id1, -id2)
 
-out <- relatedness_all_filtered3 |>
-  arrange(pmr)
-
-out[1:20,1:7]
+p <- ggplot(out_p, aes(x = pmr, fill = comparison_type, color = comparison_type)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 100, linewidth = 0) +
+  theme_classic(base_size = 14) +
+  scale_fill_manual(values = pal3)
+p
