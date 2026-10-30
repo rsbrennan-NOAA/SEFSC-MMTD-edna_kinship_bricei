@@ -103,7 +103,7 @@ qc |>
 
 Note that mean depth is from the entire genome, counting 0's. 
 
-## Nuclear genome
+### identify individuals
 
 General idea:  
 `Align to reference genome -> pseudohaploidize known SNP sites -> id relatedness/duplicate individuals.` 
@@ -163,13 +163,148 @@ Now they're 50%. This suggests the SNPs are being randomly called and are not re
 haven't done this yet, need to redo it. PopGLen_historical
 
 
-### what are the falsely aligned reads?
+## what are the falsely aligned reads?
+
+
+### Kraken
+
+To see what each sample type contains, I classified a subset of reads (10M) from six samples (biopsy Bric026, bone Bric045, tube juice Bric_tag01, and fluke prints Bric_eDNA07–09) with Kraken2 against the NCBI core_nt database
+
+Interactive Krona plots (one tab per sample): [Bric_eDNA Krona plot](https://htmlpreview.github.io/?https://github.com/rsbrennan-NOAA/SEFSC-MMTD-edna_kinship_bricei/blob/main/summary/Bric_eDNA__krona.html)
+
+```{r}
+
+#| label: tbl-kraken
+#| tbl-cap: "Kraken2 classification of 10M read subset per ***sample*** (core_nt). Percentages are of all reads. Cetacea counts include all reads assigned to Cetacea or below."
+
+library(tidyverse)
+
+kraken <- list.files("../kraken/03_kraken", pattern = "_L006\\.k2report$", full.names = TRUE) |>
+  set_names(\(x) basename(x) |> str_remove("_S\\d+_L006\\.k2report$")) |>
+  map(\(f) read_tsv(
+    f,
+    col_names = c("pct", "clade_reads", "direct_reads", "rank", "taxid", "name"),
+    col_types = "dddcdc",
+    trim_ws = TRUE
+  )) |>
+  list_rbind(names_to = "sample") |>
+  filter(name %in% c("unclassified", "root", "Bacteria", "Viruses", "Eukaryota",
+                     "Cetacea", "Balaenoptera ricei", "Homo sapiens")) |>
+  select(sample, name, clade_reads) |>
+  pivot_wider(names_from = name, values_from = clade_reads, values_fill = 0) |>
+  rename(B_ricei = `Balaenoptera ricei`, Homo_sapiens = `Homo sapiens`) |>
+  mutate(
+    total = unclassified + root,
+    pct_classified = 100 * root / total,
+    sample_type = case_when(
+      sample %in% c("Bric026", "Bric032") ~ "Biopsy",
+      sample %in% c("Bric045", "Bric046") ~ "Bone",
+      str_detect(sample, "^Bric_tag") ~ "Tube juice",
+      str_detect(sample, "^Bric_eDNA") ~ "Fluke print"
+    ),
+    sample_type = factor(sample_type, levels = c("Biopsy", "Bone", "Tube juice", "Fluke print"))
+  )
+
+kraken |>
+  arrange(sample_type, sample) |>
+  mutate(
+    pct_bacteria  = 100 * Bacteria / total,
+    pct_viruses   = 100 * Viruses / total,
+    pct_eukaryota = 100 * Eukaryota / total,
+    pct_cetacea   = formatC(signif(100 * Cetacea / total, 2), format = "fg", digits = 2)
+  ) |>
+  select(
+    Sample = sample,
+    Type = sample_type,
+    `% classified` = pct_classified,
+    `% Bacteria` = pct_bacteria,
+    `% Viruses` = pct_viruses,
+    `% Eukaryota` = pct_eukaryota,
+    `Cetacea reads` = Cetacea,
+    `% Cetacea` = pct_cetacea,
+    `B. ricei reads` = B_ricei,
+    `Human reads` = Homo_sapiens
+  ) |>
+  knitr::kable(
+    digits = c(0, 0, 1, 1, 1, 1, 0, 0, 0, 0),
+    align = "llrrrrrrrr"
+  )
+```
+
+take aways:
+
+1. Most reads are unclassified. Only 58% of biopsy reads and 17–25% of reads from the other samples were classified. This is typical. Most marine microbes are uncultured with no close reference, and core_nt contains few microbial genome assemblies. 
+
+2. However, the biopsy shows that Kraken2 underestimates whale DNA. Only 25% of biopsy reads were assigned to Cetacea, even though a biopsy should be nearly all whale. Cetacea counts for all samples are therefore underestimates, by roughly 4×.
+
+3. Whale DNA is extremely rare in fluke prints. Cetacea made up 25% of biopsy reads, 1.9% of bone, and 0.25% of tube juice, but only 5–8 reads per million in the fluke prints (84, 64 and 54 reads)
+
+4. Human DNA in fluke prints is likely contamination. Kraken assigns some conserved mammalian reads to Homo sapiens, so human counts track whale DNA in the biopsy, bone and tube juice, roughly. In the fluke prints, human reads outnumber whale reads dramatically, which likely indicates real human DNA. 
+
+5. If whale DNA is this rare, most reads that align to the Rice's whale genome in the fluke-print samples are probably not whale and explains why spurious alignments of non-whale reads carry no real Rice's whale genotype information.
+
+**The next step is to classify the reads that mapped to the whale genome directly (see below).**
+
+
+### Blast aligned reads
 
 need to blast the mapped reads. I bet they hit bacteria or viral or something. 
 
 Could also run kracken or similar to see what the reads are. 
 
+```{r}
+#| label: fig-mapped-kraken
+#| fig-cap: "Kraken2 classification of reads that aligned to the Rice's whale genome with MAPQ ≥ 30."
 
+mapped <- list.files("../kraken/05_mapped_reads", pattern = "\\.q30\\.k2report$", full.names = TRUE) |>
+  set_names(\(x) basename(x) |> str_remove("\\.q30\\.k2report$")) |>
+  map(\(f) read_tsv(
+    f,
+    col_names = c("pct", "clade_reads", "direct_reads", "rank", "taxid", "name"),
+    col_types = "dddcdc",
+    trim_ws = TRUE
+  )) |>
+  list_rbind(names_to = "sample") |>
+  filter(name %in% c("unclassified", "root", "Bacteria", "Archaea", "Viruses",
+                     "Eukaryota", "Mammalia", "Cetacea", "Homo sapiens")) |>
+  select(sample, name, clade_reads) |>
+  pivot_wider(names_from = name, values_from = clade_reads, values_fill = 0) |>
+  transmute(
+    sample,
+    Cetacea             = Cetacea,
+    Human               = `Homo sapiens`,
+    `Other mammal`      = Mammalia - Cetacea - `Homo sapiens`,
+    `Other eukaryote`   = Eukaryota - Mammalia,
+    `Bacteria/Archaea`  = Bacteria + Archaea,
+    Viruses             = Viruses,
+    `Higher rank only`  = root - Bacteria - Archaea - Eukaryota - Viruses,
+    Unclassified        = unclassified
+  ) |>
+  pivot_longer(-sample, names_to = "category", values_to = "reads") |>
+  mutate(
+    frac = reads / sum(reads),
+    .by = sample
+  ) |>
+  mutate(
+    category = factor(category, levels = c("Cetacea", "Other mammal", "Human", "Other eukaryote",
+                                           "Bacteria/Archaea", "Viruses", "Higher rank only", "Unclassified")),
+    sample_type = case_when(
+      sample %in% c("Bric026", "Bric032") ~ "Biopsy",
+      sample %in% c("Bric045", "Bric046") ~ "Bone",
+      str_detect(sample, "^Bric[-_]tag") ~ "Tube juice",
+      str_detect(sample, "^Bric[-_]eDNA") ~ "Fluke print"
+    ),
+    sample_type = factor(sample_type, levels = c("Biopsy", "Bone", "Tube juice", "Fluke print"))
+  )
+
+ggplot(mapped, aes(x = sample, y = frac, fill = category)) +
+  geom_col() +
+  facet_grid(~ sample_type, scales = "free_x", space = "free_x") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = NULL, y = "Share of mapped reads (MAPQ ≥ 30)", fill = NULL) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
 
 
 ## Successful Samples
