@@ -11,6 +11,7 @@
  
  
 source ~/.bashrc
+eval "$(mamba shell hook --shell bash)"
 conda activate popglen
  
 snakemake \
@@ -25,4 +26,5 @@ snakemake \
   --singularity-prefix ~/popglen_singularity \
   --jobs 20 \
   --retries 3 \
-  --latency-wait 20 
+  --latency-wait 20 \
+  --rerun-incomplete  
