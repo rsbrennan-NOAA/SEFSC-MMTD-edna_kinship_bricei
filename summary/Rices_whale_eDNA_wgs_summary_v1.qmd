@@ -166,18 +166,18 @@ haven't done this yet, need to redo it. PopGLen_historical
 ## what are the falsely aligned reads?
 
 
-### Kraken
+### All reads
 
-To see what each sample type contains, I classified a subset of reads (10M) from six samples (biopsy Bric026, bone Bric045, tube juice Bric_tag01, and fluke prints Bric_eDNA07–09) with Kraken2 against the NCBI core_nt database
+To see what each sample type contains, I classified a subset of reads (~10M) from six samples (biopsy Bric026, bone Bric045, tube juice Bric_tag01, and fluke prints Bric_eDNA07–09) with [Kraken2](https://github.com/DerrickWood/kraken2) against the NCBI core_nt database
 
-Interactive Krona plots (one tab per sample): [Bric_eDNA Krona plot](https://htmlpreview.github.io/?https://github.com/rsbrennan-NOAA/SEFSC-MMTD-edna_kinship_bricei/blob/main/summary/Bric_eDNA__krona.html)
+Interactive [Krona plots](https://github.com/marbl/Krona/wiki): [Link to Krona plot](https://htmlpreview.github.io/?https://github.com/rsbrennan-NOAA/SEFSC-MMTD-edna_kinship_bricei/blob/main/summary/Bric_eDNA__krona.html)
+
+
+note that Samples don't have 10 million reads bc they were trimmed and filtered after subsetting to 10M. 
 
 ```{r}
-
 #| label: tbl-kraken
-#| tbl-cap: "Kraken2 classification of 10M read subset per ***sample*** (core_nt). Percentages are of all reads. Cetacea counts include all reads assigned to Cetacea or below."
-
-library(tidyverse)
+#| tbl-cap: "Kraken2 classification of a 10M-read subset per sample (core_nt). Percentages are of all reads. Cetacea counts include all reads assigned to Cetacea or below."
 
 kraken <- list.files("../kraken/03_kraken", pattern = "_L006\\.k2report$", full.names = TRUE) |>
   set_names(\(x) basename(x) |> str_remove("_S\\d+_L006\\.k2report$")) |>
@@ -188,8 +188,8 @@ kraken <- list.files("../kraken/03_kraken", pattern = "_L006\\.k2report$", full.
     trim_ws = TRUE
   )) |>
   list_rbind(names_to = "sample") |>
-  filter(name %in% c("unclassified", "root", "Bacteria", "Viruses", "Eukaryota",
-                     "Cetacea", "Balaenoptera ricei", "Homo sapiens")) |>
+  filter(name %in% c("unclassified", "root", "Bacteria", "Archaea", "Viruses", "Eukaryota",
+                     "Mammalia", "Cetacea", "Balaenoptera ricei", "Homo sapiens")) |>
   select(sample, name, clade_reads) |>
   pivot_wider(names_from = name, values_from = clade_reads, values_fill = 0) |>
   rename(B_ricei = `Balaenoptera ricei`, Homo_sapiens = `Homo sapiens`) |>
@@ -205,6 +205,9 @@ kraken <- list.files("../kraken/03_kraken", pattern = "_L006\\.k2report$", full.
     sample_type = factor(sample_type, levels = c("Biopsy", "Bone", "Tube juice", "Fluke print"))
   )
 
+
+
+
 kraken |>
   arrange(sample_type, sample) |>
   mutate(
@@ -216,6 +219,7 @@ kraken |>
   select(
     Sample = sample,
     Type = sample_type,
+    `Total reads` = total,
     `% classified` = pct_classified,
     `% Bacteria` = pct_bacteria,
     `% Viruses` = pct_viruses,
@@ -231,13 +235,46 @@ kraken |>
   )
 ```
 
+```{r}
+#| label: fig-kraken
+#| fig-cap: "Kraken2 classification of a 10M-read subset per sample (core_nt)."
+
+kraken |>
+  transmute(
+    sample,
+    sample_type,
+    Cetacea            = Cetacea,
+    Human              = Homo_sapiens,
+    `Other mammal`     = Mammalia - Cetacea - Homo_sapiens,
+    `Other eukaryote`  = Eukaryota - Mammalia,
+    `Bacteria/Archaea` = Bacteria + Archaea,
+    Viruses            = Viruses,
+    `Higher rank only` = root - Bacteria - Archaea - Eukaryota - Viruses,
+    Unclassified       = unclassified
+  ) |>
+  pivot_longer(-c(sample, sample_type), names_to = "category", values_to = "reads") |>
+  mutate(frac = reads / sum(reads), .by = sample) |>
+  mutate(category = factor(category, levels = c(
+    "Cetacea", "Other mammal", "Human", "Other eukaryote",
+    "Bacteria/Archaea", "Viruses", "Higher rank only", "Unclassified"
+  ))) |>
+  ggplot(aes(x = sample, y = frac, fill = category)) +
+  geom_col() +
+  facet_grid(~ sample_type, scales = "free_x", space = "free_x") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = NULL, y = "Share of all reads", fill = NULL) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
 take aways:
 
-1. Most reads are unclassified. Only 58% of biopsy reads and 17–25% of reads from the other samples were classified. This is typical. Most marine microbes are uncultured with no close reference, and core_nt contains few microbial genome assemblies. 
+1. Most reads are unclassified. This is typical. Most marine microbes are uncultured with no close reference, and core_nt contains few microbial genome assemblies. 
 
-2. However, the biopsy shows that Kraken2 underestimates whale DNA. Only 25% of biopsy reads were assigned to Cetacea, even though a biopsy should be nearly all whale. Cetacea counts for all samples are therefore underestimates, by roughly 4×.
+2. Biopsy shows that Kraken2 underestimates whale DNA. Only 25% of biopsy reads were assigned to Cetacea, even though a biopsy should be mostly whale. Cetacea counts for all samples are therefore underestimates, by ~3-4x.
 
-3. Whale DNA is extremely rare in fluke prints. Cetacea made up 25% of biopsy reads, 1.9% of bone, and 0.25% of tube juice, but only 5–8 reads per million in the fluke prints (84, 64 and 54 reads)
+3. Whale DNA is extremely rare in fluke prints. Cetacea made up 25% of biopsy reads, 1.9% of bone, and 0.25% of tube juice, 84, 64 and 54 reads in the fluke print
 
 4. Human DNA in fluke prints is likely contamination. Kraken assigns some conserved mammalian reads to Homo sapiens, so human counts track whale DNA in the biopsy, bone and tube juice, roughly. In the fluke prints, human reads outnumber whale reads dramatically, which likely indicates real human DNA. 
 
@@ -248,13 +285,70 @@ take aways:
 
 ### Blast aligned reads
 
-need to blast the mapped reads. I bet they hit bacteria or viral or something. 
 
-Could also run kracken or similar to see what the reads are. 
+Interactive Krona plots for mapped reads: [Bric_eDNA Krona plot](https://htmlpreview.github.io/?https://github.com/rsbrennan-NOAA/SEFSC-MMTD-edna_kinship_bricei/blob/main/kraken/06_mapped_krona/mapped_q30_krona.html)
+
+
+```{r}
+#| label: tbl-kraken-mapped
+#| tbl-cap: "Kraken classification of reads that aligned to the Rice's whale genome (up to 5M per sample). Cetacea counts include all reads assigned to Cetacea or below."
+
+kraken_mapped <- list.files("../kraken/05_mapped_reads", pattern = "\\.q30\\.k2report$", full.names = TRUE) |>
+  set_names(\(x) basename(x) |> str_remove("\\.q30\\.k2report$")) |>
+  map(\(f) read_tsv(
+    f,
+    col_names = c("pct", "clade_reads", "direct_reads", "rank", "taxid", "name"),
+    col_types = "dddcdc",
+    trim_ws = TRUE
+  )) |>
+  list_rbind(names_to = "sample") |>
+  filter(name %in% c("unclassified", "root", "Bacteria", "Archaea", "Viruses", "Eukaryota",
+                     "Mammalia", "Cetacea", "Balaenoptera ricei", "Homo sapiens")) |>
+  select(sample, name, clade_reads) |>
+  pivot_wider(names_from = name, values_from = clade_reads, values_fill = 0) |>
+  rename(B_ricei = `Balaenoptera ricei`, Homo_sapiens = `Homo sapiens`) |>
+  mutate(
+    total = unclassified + root,
+    pct_classified = 100 * root / total,
+    sample_type = case_when(
+      sample %in% c("Bric026", "Bric032") ~ "Biopsy",
+      sample %in% c("Bric045", "Bric046") ~ "Bone",
+      str_detect(sample, "^Bric-tag") ~ "Tube juice",
+      str_detect(sample, "^Bric-eDNA") ~ "Fluke print"
+    ),
+    sample_type = factor(sample_type, levels = c("Biopsy", "Bone", "Tube juice", "Fluke print"))
+  )
+
+kraken_mapped |>
+  arrange(sample_type, sample) |>
+  mutate(
+    pct_bacteria  = 100 * Bacteria / total,
+    pct_viruses   = 100 * Viruses / total,
+    pct_eukaryota = 100 * Eukaryota / total,
+    pct_cetacea   = formatC(signif(100 * Cetacea / total, 2), format = "fg", digits = 2)
+  ) |>
+  select(
+    Sample = sample,
+    Type = sample_type,
+    `Total reads` = total,
+    `% classified` = pct_classified,
+    `% Bacteria` = pct_bacteria,
+    `% Viruses` = pct_viruses,
+    `% Eukaryota` = pct_eukaryota,
+    `Cetacea reads` = Cetacea,
+    `% Cetacea` = pct_cetacea,
+    `B. ricei reads` = B_ricei,
+    `Human reads` = Homo_sapiens
+  ) |>
+  knitr::kable(
+    digits = c(0, 0, 1, 1, 1, 1, 0, 0, 0, 0),
+    align = "llrrrrrrrr"
+  )
+```
 
 ```{r}
 #| label: fig-mapped-kraken
-#| fig-cap: "Kraken2 classification of reads that aligned to the Rice's whale genome with MAPQ ≥ 30."
+#| fig-cap: "Kraken classification of reads that aligned to the Rice's whale genome"
 
 mapped <- list.files("../kraken/05_mapped_reads", pattern = "\\.q30\\.k2report$", full.names = TRUE) |>
   set_names(\(x) basename(x) |> str_remove("\\.q30\\.k2report$")) |>
@@ -306,6 +400,22 @@ ggplot(mapped, aes(x = sample, y = frac, fill = category)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+
+take aways:
+
+1. Fewer mapped reads were classified than in the whole-sample run (e.g., 42% vs 58% for the biopsy). MAPQ > 30 filter removes repetitive whale DNA that Kraken classifies easily. For classified reads, the biopsy's composition is the same and is majority eukaryotic. 
+
+2. In bone and tube juice, mapping enriches for whale DNA. 
+- bone: Cetacea 1.9% to 9.2%
+- 0.25% to 3.7% in tube juice, while bacteria drop to ~2%. 
+- Relative to the biopsy (14% Cetacea for mapped reads), roughly two-thirds of bone and a quarter of tube-juice mapped reads look like whale.
+
+3. Fluke prints
+- the reads that align to the whale genome are almost entirely non-whale, even at MAPQ > 30.
+- Calssified reads are majority bacteria and viruses. 
+- Cetacea makes up only 0.006–0.012% of mapped reads
+
+4. Fluke print reads are predominantly non-whale, probably bacterial, human, or similar in origin. 
 
 ## Successful Samples
 
