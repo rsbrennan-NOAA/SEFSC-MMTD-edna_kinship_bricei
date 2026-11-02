@@ -38,12 +38,11 @@ mkdir -p "${OUT_DIR}"
 
 for SAMPLE in "${SAMPLES[@]}"; do
 
-  echo "=== ${SAMPLE}: Kraken2 start $(date) ==="
+  echo "${SAMPLE}: Kraken start"
 
   kraken2 \
     --db "${DB}" \
     --threads ${SLURM_CPUS_PER_TASK} \
-    --paired \
     --gzip-compressed \
     --confidence ${CONFIDENCE} \
     --report "${OUT_DIR}/${SAMPLE}.k2report" \
@@ -53,7 +52,7 @@ for SAMPLE in "${SAMPLES[@]}"; do
 
   echo "=== ${SAMPLE}: Bracken start $(date) ==="
 
-  # species and genus level abundance re-estimation
+  # species and genus level abundance estimation
   for LEVEL in S G; do
     bracken \
       -d "${DB}" \
@@ -64,11 +63,11 @@ for SAMPLE in "${SAMPLES[@]}"; do
       -l ${LEVEL}
   done
 
-  # domain-level summary straight from the Kraken2 report (keeps unclassified reads)
+  # domain-level summary from the Kraken report- keeps unclassified reads
   # columns: percent of reads, read count, rank, name
   awk -F'\t' '$4=="U" || $4=="D" || $4=="R1" {gsub(/^ +/, "", $6); print $1"\t"$2"\t"$4"\t"$6}' \
     "${OUT_DIR}/${SAMPLE}.k2report" > "${OUT_DIR}/${SAMPLE}.domain_summary.tsv"
 
-  echo "=== ${SAMPLE}: done $(date) ==="
+  echo "${SAMPLE} done"
 
 done
