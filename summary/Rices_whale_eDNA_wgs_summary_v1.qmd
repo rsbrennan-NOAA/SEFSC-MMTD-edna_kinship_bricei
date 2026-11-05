@@ -168,16 +168,16 @@ haven't done this yet, need to redo it. PopGLen_historical
 
 ### All reads
 
-To see what each sample type contains, I classified a subset of reads (~10M) from six samples (biopsy Bric026, bone Bric045, tube juice Bric_tag01, and fluke prints Bric_eDNA07–09) with [Kraken2](https://github.com/DerrickWood/kraken2) against the NCBI core_nt database
+To see what each sample type contains, I classified a subset of reads (~10M) from six samples (biopsy Bric026, bone Bric045, tube juice Bric_tag01, and fluke prints Bric_eDNA07–09) with [Kraken2](https://github.com/DerrickWood/kraken2) against the NCBI core_nt database. Then can visualize with interactive [Krona plots](https://github.com/marbl/Krona/wiki)
 
-Interactive [Krona plots](https://github.com/marbl/Krona/wiki): [Link to Krona plot](https://htmlpreview.github.io/?https://github.com/rsbrennan-NOAA/SEFSC-MMTD-edna_kinship_bricei/blob/main/summary/Bric_eDNA__krona.html)
+[Link to Krona plot](https://htmlpreview.github.io/?https://github.com/rsbrennan-NOAA/SEFSC-MMTD-edna_kinship_bricei/blob/main/kraken/04_krona/Bric_eDNA__krona.html)
 
 
 note that Samples don't have 10 million reads bc they were trimmed and filtered after subsetting to 10M. 
 
 ```{r}
 #| label: tbl-kraken
-#| tbl-cap: "Kraken2 classification of a 10M-read subset per sample (core_nt). Percentages are of all reads. Cetacea counts include all reads assigned to Cetacea or below."
+#| tbl-cap: "Kraken classification of raw reads. Percentages are of all reads. Cetacea counts include all reads assigned to Cetacea or below."
 
 kraken <- list.files("../kraken/03_kraken", pattern = "_L006\\.k2report$", full.names = TRUE) |>
   set_names(\(x) basename(x) |> str_remove("_S\\d+_L006\\.k2report$")) |>
@@ -237,7 +237,7 @@ kraken |>
 
 ```{r}
 #| label: fig-kraken
-#| fig-cap: "Kraken2 classification of a 10M-read subset per sample (core_nt)."
+#| fig-cap: "Kraken classification of a 10M raw reads per sample"
 
 kraken |>
   transmute(
@@ -272,9 +272,9 @@ take aways:
 
 1. Most reads are unclassified. This is typical. Most marine microbes are uncultured with no close reference, and core_nt contains few microbial genome assemblies. 
 
-2. Biopsy shows that Kraken2 underestimates whale DNA. Only 25% of biopsy reads were assigned to Cetacea, even though a biopsy should be mostly whale. Cetacea counts for all samples are therefore underestimates, by ~3-4x.
+2. Biopsy shows that Kraken2 underestimates whale DNA; a biopsy should be mostly whale. Cetacea counts for all samples are underestimates, by ~3-4x.
 
-3. Whale DNA is extremely rare in fluke prints. Cetacea made up 25% of biopsy reads, 1.9% of bone, and 0.25% of tube juice, 84, 64 and 54 reads in the fluke print
+3. Whale DNA is extremely rare in fluke prints. Cetacea made up 21% of biopsy reads, 1.6% of bone, and 0.2% of tube juice, but only a few fluke-print reads (626, 662 and 666 reads out of ~20M). 
 
 4. Human DNA in fluke prints is likely contamination. Kraken assigns some conserved mammalian reads to Homo sapiens, so human counts track whale DNA in the biopsy, bone and tube juice, roughly. In the fluke prints, human reads outnumber whale reads dramatically, which likely indicates real human DNA. 
 
@@ -348,7 +348,7 @@ kraken_mapped |>
 
 ```{r}
 #| label: fig-mapped-kraken
-#| fig-cap: "Kraken classification of reads that aligned to the Rice's whale genome"
+#| fig-cap: "Kraken classification of 5 million reads that aligned to the Rice's whale genome"
 
 mapped <- list.files("../kraken/05_mapped_reads", pattern = "\\.q30\\.k2report$", full.names = TRUE) |>
   set_names(\(x) basename(x) |> str_remove("\\.q30\\.k2report$")) |>
@@ -403,17 +403,15 @@ ggplot(mapped, aes(x = sample, y = frac, fill = category)) +
 
 take aways:
 
-1. Fewer mapped reads were classified than in the whole-sample run (e.g., 42% vs 58% for the biopsy). MAPQ > 30 filter removes repetitive whale DNA that Kraken classifies easily. For classified reads, the biopsy's composition is the same and is majority eukaryotic. 
+1. Classification rates are similar to the whole-sample run for the biopsy (42% vs 46%). Probably due to quality filtering, removing repetitive regions. For classified reads, the biopsy's composition is similar and is majority eukaryotic. 
 
-2. In bone and tube juice, mapping enriches for whale DNA. 
-- bone: Cetacea 1.9% to 9.2%
-- 0.25% to 3.7% in tube juice, while bacteria drop to ~2%. 
-- Relative to the biopsy (14% Cetacea for mapped reads), roughly two-thirds of bone and a quarter of tube-juice mapped reads look like whale.
+2. In bone and tube juice, mapping enriches for whale DNA.
+   - bone: Cetacea 1.6% to 9.2%
+   - tube juice: 0.2% to 3.7%, while bacteria drop from ~4% to ~2%.
 
 3. Fluke prints
-- the reads that align to the whale genome are almost entirely non-whale, even at MAPQ > 30.
+- the reads that align to the whale genome are almost entirely non-whale
 - Calssified reads are majority bacteria and viruses. 
-- Cetacea makes up only 0.006–0.012% of mapped reads
 
 4. Fluke print reads are predominantly non-whale, probably bacterial, human, or similar in origin. 
 
@@ -423,4 +421,4 @@ take aways:
 
 Run the pmr analysis with these only to at least see if there are any duplicate individuals. 
 
-
+I have this in `pmr_breadr.R`, I think.

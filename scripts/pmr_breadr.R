@@ -225,7 +225,7 @@ plotLOAF(relatedness_highcov, N=300)
 plotSLICE(relatedness_highcov, row = 5, labels = c('A', 'B'))
 
 
-test_degree(relatedness_highcov, row = 5, degree = 3, verbose = TRUE)
+test_degree(relatedness_highcov, row = 1, degree = 3, verbose = TRUE)
 
 
 BREADR::priorSensitivity(
@@ -313,21 +313,6 @@ R1_R0
 ggarrange(rab,R1_R0)
 
 #
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -473,9 +458,9 @@ hist(comparison$pmr_diff, xlim=c(-0.1, 0.1))
 
 
 
-####### ------------------------------------------------------------------------------
-####### ------------------------------------------------------------------------------
-####### ------------------------------------------------------------------------------
+####### -------------------------------------------------------------------------------------------------------------------------------
+####### -------------------------------------------------------------------------------------------------------------------------------
+####### -------------------------------------------------------------------------------------------------------------------------------
 # analyze all samples
 ind_path <- "analysis/pseudo_haps/all_samples_merged_nonmaskedGenome_nonmasked-PH.ind"
 snp_path <- "analysis/pseudo_haps/all_samples_merged_nonmaskedGenome_nonmasked-PH.snp"
@@ -590,3 +575,129 @@ p <- ggplot(out_p, aes(x = pmr, fill = comparison_type, color = comparison_type)
   theme_classic(base_size = 14) +
   scale_fill_manual(values = pal3)
 p
+
+p <- ggplot(out_p, aes(x = pmr, fill = comparison_type, color = comparison_type)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 100, linewidth = 0) +
+  theme_classic(base_size = 14) +
+  scale_fill_manual(values = pal3)
+p
+
+
+
+# ----------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------
+# compare the relatedness estaimtes:
+
+
+fullRel <- read.csv("analysis/pseudo_haps/relatednessNewData.csv", header=T)
+
+fullRel$Indv1 <- gsub("Bricei", "Bric", fullRel$Indv1)
+fullRel$Indv2 <- gsub("Bricei", "Bric", fullRel$Indv2)
+
+# use rab
+pmr_out <- out2 |>
+  separate(pair, into = c("Indv1", "Indv2"), sep = " - ", remove = FALSE)
+
+# this orders the names consistently. to make matching easier.
+pmr_out2 <- pmr_out |>
+  mutate(id1 = pmin(Indv1, Indv2),
+         id2 = pmax(Indv1, Indv2))
+
+fullRel <- fullRel |>
+  mutate(id1 = pmin(Indv1, Indv2),
+         id2 = pmax(Indv1, Indv2))
+
+merged <- pmr_out2 |>
+  left_join(fullRel, by = c("Indv1", "Indv2"), suffix = c("", "_full"))
+
+#pmin()/pmax() alphabetically sort each row's pair so Bric001-Bric002 and Bric002-Bric001 both become id1 = Bric001, id2 = Bric002, letting the join match regardless of original order.
+
+#this will produce duplicate Indv1/Indv2 columns from both data frames
+rab <- ggplot(data=merged, aes(rab, pmr)) +
+  geom_point(size=2) +
+  theme_bw()
+
+rab
+
+
+ggplot(data=merged, aes(rab, KING)) +
+  geom_point(size=2) +
+  theme_bw()
+
+#Calculate the rank difference to color the points
+merged_plot <- merged %>%
+  mutate(rank_diff = abs(rank(-rab, ties.method = "first") - rank(-KING, ties.method = "first")))
+
+# Plot the scatter plot
+ggplot(data = merged_plot, aes(rab, KING)) +
+  geom_point(aes(color = rank_diff), size = 2) +
+  scale_color_gradient(low = "blue", high = "red", name = "Rank Diff") +
+  theme_bw()
+
+
+
+
+
+top_agreed_pairs <- merged_plot %>%
+  filter(
+    rank(-rab) <= 15, 
+    rank(-KING) <= 15
+  ) %>%
+  select(Indv1, Indv2, rab, KING)
+
+print(top_agreed_pairs)
+
+
+
+merged$rab
+as.data.frame(merged[24,])
+
+merged$pmr[is.na(merged$rab)]
+
+
+R1_R0 <- ggplot(merged, aes(x=R1, y=R0)) +
+              geom_point(alpha=0.5, size=2)
+
+R1_R0 <- ggplot(merged, aes(x = R1, y = R0, color = pmr < 0.24)) +
+              geom_point(alpha = 0.5, size = 2)
+
+merged <- merged |>
+  mutate(group = case_when(
+    pmr < 0.24 & rab > 0.3  ~ "rab > 0.3; pmr < 0.24",
+    pmr < 0.2 & rab <= 0.3 ~ "pmr < 0.24 only",
+    pmr >= 0.24 & rab > 0.2 ~ "rab > 0.3 only",
+    TRUE                     ~ "Neither"
+  ))|>
+  arrange(desc(group == "Neither")) 
+
+R1_R0 <- ggplot(merged, aes(x = R1, y = R0, color = group)) +
+              geom_point(alpha = 1, size = 2) +
+              scale_color_manual(values = c("rab > 0.3; pmr < 0.24" = "purple",
+                                             "pmr < 0.24 only" = "orange",
+                                             "rab > 0.3 only" = "blue",
+                                             "Neither" = "grey70")) +
+  theme_bw()
+R1_R0
+ggarrange(rab,R1_R0)
+
+#
+
+
+
+#- why is rank order different?
+library(dplyr)
+
+merged_data <- merged[!is.na(merged$rab) & !is.na(merged$pmr), ]
+nrow(merged_data)
+# 1. Check overall rank correlation (Should ideally be > 0.7)
+cor.test(merged_data$rab, merged_data$pmr, method = "spearman")
+
+# 2. Filter for high-overlap sites to see if the ranks fix themselves
+high_confidence <- merged_data %>% filter(nSites > 20000 & nsnps > 20000)
+nrow(high_confidence)
+cor.test(high_confidence$rab, high_confidence$pmr, method = "spearman")
+cor.test(high_confidence$rab, high_confidence$KING, method = "spearman")
+cor.test(high_confidence$pmr, high_confidence$KING, method = "spearman")
+
+KING
